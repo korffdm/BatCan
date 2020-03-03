@@ -218,6 +218,54 @@ def plot_elyte(rho_k_an, rho_k_cat, rho_k_sep, SV_df, stage, yax, fig, axes):
 
 """========================================================================="""
 
+def plot_temp(T_an, T_sep, T_cat, SV_df, stage, yax, fig, axes):
+    
+    if stage == 'Discharging':
+        showlegend = 1
+    else:
+        showlegend = 0
+    fontsize = 22
+    
+    t = SV_df['Time']
+    
+    axes_an = axes[yax]
+    axes_sep = axes[yax] #axes[Inputs.flag_sep, yax]
+    axes_cat = axes[yax] #axes[Inputs.flag_sep+Inputs.flag_cathode, yax]
+        
+    # Plot anode temperature
+    SV_plot = SV_df.plot(x='Time', y=T_an, ax = axes_an, xlim=[0,t.iloc[-1]]) #, ylim=[299.5, 301])
+    SV_plot.set_title(stage, fontsize = fontsize)
+    SV_plot.set_ylabel(r'$T_{an}$ [K]', fontsize = fontsize)
+    SV_plot.set_xlabel('Time [s]', fontsize = fontsize).set_visible(False)
+    SV_plot.legend(loc=2, bbox_to_anchor=(1.05, 1), ncol=1, borderaxespad=0,
+                   frameon=False).set_visible(showlegend)
+    SV_plot.tick_params(axis='both', labelsize=18)
+    SV_plot.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
+    
+    # Plot separator temperature
+    SV_plot = SV_df.plot(x='Time', y=T_sep, ax = axes_sep, xlim=[0,t.iloc[-1]]) #, ylim=[299.5, 301])
+    SV_plot.set_title(stage, fontsize = fontsize).set_visible(False)
+    SV_plot.set_ylabel(r'$T_{sep}$ [K]', fontsize = fontsize)
+    SV_plot.set_xlabel('Time [s]', fontsize = fontsize).set_visible(False)
+    SV_plot.legend(loc=2, bbox_to_anchor=(1.05, 1), ncol=1, borderaxespad=0,
+                   frameon=False).set_visible(showlegend)
+    SV_plot.tick_params(axis='both', labelsize=18)
+    SV_plot.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
+    
+    # Plot cathode temperature
+    SV_plot = SV_df.plot(x='Time', y=T_cat, ax = axes_cat, xlim=[0,t.iloc[-1]]) #, ylim=[299.5, 301])
+    SV_plot.set_title(stage, fontsize = fontsize).set_visible(False)
+    SV_plot.set_ylabel(r'$T_{cat}$ [K]', fontsize = fontsize)
+    SV_plot.set_xlabel('Time [s]', fontsize = fontsize).set_visible(True)
+    SV_plot.legend(loc=2, bbox_to_anchor=(1.05, 1), ncol=1, borderaxespad=0,
+                   frameon=False).set_visible(showlegend)
+    SV_plot.tick_params(axis='both', labelsize=18)
+    SV_plot.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
+    
+    return
+
+"""========================================================================="""
+
 def plot_cap(SV_ch_df, SV_dch_df, rate_tag, i_ext, flag_plot, tags):
     fontsize = 18
     
@@ -233,7 +281,7 @@ def plot_cap(SV_ch_df, SV_dch_df, rate_tag, i_ext, flag_plot, tags):
     Capacity_discharge = -dt_dch*i_ext/3600   # A-h/m^2
     
     if flag_plot:
-        plt.figure(4, figsize = (8, 6))
+        plt.figure(5, figsize = (8, 6))
         plt.plot(Capacity_charge, V_ch, 'g-')
         plt.plot(Capacity_discharge, V_dch, 'g--')
         plt.title('Potential vs. Capacity', fontsize = fontsize)
@@ -279,7 +327,7 @@ def plot_cap(SV_ch_df, SV_dch_df, rate_tag, i_ext, flag_plot, tags):
 """========================================================================="""
 
 def tag_strings(SV):
-    SV_eq_labels = SV.columns.values.tolist()
+    SV_labels = SV.columns.values.tolist()
 
     X_an = []
     X_cat = []
@@ -289,43 +337,57 @@ def tag_strings(SV):
     V_cat = []
     V_sep = np.array([])
     X_el_sep = []
+    T_an = np.array([])
+    T_sep = np.array([])
+    T_cat = np.array([])
     
     ptr = anode.ptr
     for j in np.arange(0, anode.npoints):
         offset = int(anode.offsets[j])
         V_an[0+offset:1+offset] = \
-            SV_eq_labels[ptr['Phi_ed']+offset:ptr['Phi_dl']+offset+1]
+            SV_labels[ptr['Phi_ed']+offset:ptr['Phi_dl']+offset+1]
             
         X_an[0+offset:anode.nshells+offset] = \
-            SV_eq_labels[0+offset:anode.nshells+offset]
+            SV_labels[0+offset:anode.nshells+offset]
             
         rho_el_an[0+offset:elyte_obj.n_species+offset] = \
-            SV_eq_labels[ptr['X_k_elyte'][0]+offset:ptr['X_k_elyte'][-1]+offset+1]
+            SV_labels[ptr['X_k_elyte'][0]+offset:ptr['X_k_elyte'][-1]+offset+1]
+            
+        T_an = np.append(T_an, SV_labels[ptr['T']+offset])
+            
+        
                 
     ptr = cathode.ptr
     for j in np.arange(0, cathode.npoints):
         offset = int(cathode.offsets[j])
         V_cat[0+offset:1+offset] = \
-            SV_eq_labels[ptr['Phi_ed']+offset:ptr['Phi_dl']+offset+1]
+            SV_labels[ptr['Phi_ed']+offset:ptr['Phi_dl']+offset+1]
         
         X_cat[0+offset:cathode.nshells+offset] = \
-            SV_eq_labels[0+offset:cathode.nshells+offset]
+            SV_labels[0+offset:cathode.nshells+offset]
         
         rho_el_cat[0+offset:elyte_obj.n_species+offset] = \
-            SV_eq_labels[ptr['X_k_elyte'][0]+offset:ptr['X_k_elyte'][-1]+offset+1]
+            SV_labels[ptr['X_k_elyte'][0]+offset:ptr['X_k_elyte'][-1]+offset+1]
+            
+        T_cat = np.append(T_cat, SV_labels[ptr['T']+offset])
             
     ptr = sep.ptr
     for j in np.arange(0, sep.npoints):
         offset = int(sep.offsets[j])
-        V_sep = np.append(V_sep, SV_eq_labels[ptr['Phi']+offset])
+        V_sep = np.append(V_sep, SV_labels[ptr['Phi']+offset])
         X_el_sep[0+offset:elyte_obj.n_species+offset] = \
-            SV_eq_labels[ptr['X_k_elyte'][0]+offset:ptr['X_k_elyte'][-1]+offset+1]
+            SV_labels[ptr['X_k_elyte'][0]+offset:ptr['X_k_elyte'][-1]+offset+1]
+            
+        T_sep = np.append(T_sep, SV_labels[ptr['T']+offset])
     
     V_sep = V_sep.tolist()
+    T_an = T_an.tolist()
+    T_sep = T_sep.tolist()
+    T_cat = T_cat.tolist()
     tags = {}
     tags['Phi_an'] = V_an; tags['Phi_cat'] = V_cat; tags['X_an'] = X_an; tags['X_cat'] = X_cat
     tags['X_el_an'] = rho_el_an; tags['X_el_cat'] = rho_el_cat; tags['X_el_sep'] = X_el_sep
-    tags['Phi_sep'] = V_sep
+    tags['Phi_sep'] = V_sep; tags['T_an'] = T_an; tags['T_sep'] = T_sep; tags['T_cat'] = T_cat
 
     return tags
 
@@ -365,6 +427,10 @@ def Label_Columns(t, SV, anode_np, sep_np, cat_np):
                        1+anode.nshells+elyte_obj.n_species+offset: 'Phi_an_dl'+str(j+1)}
         newcols.update(newcols_phi)
         
+        # Add tags for temperature at each node
+        newcols_T = {2+anode.nshells+elyte_obj.n_species+offset: 'T_an'+str(j+1)}
+        newcols.update(newcols_T)
+        
         SV_df.rename(columns=newcols, inplace=True)
         
     """Label separator points"""
@@ -381,6 +447,10 @@ def Label_Columns(t, SV, anode_np, sep_np, cat_np):
         # Add tag for electrolyte potential
         newcols_phi = {0+elyte_obj.n_species+offset: 'Phi_sep'+str(j+1)}
         newcols.update(newcols_phi)
+        
+        # Add tags for temperature at each node
+        newcols_T = {1+elyte_obj.n_species+offset: 'T_sep'+str(j+1)}
+        newcols.update(newcols_T)
         
         SV_df.rename(columns=newcols, inplace = True)
     
@@ -404,6 +474,10 @@ def Label_Columns(t, SV, anode_np, sep_np, cat_np):
         newcols_phi = {0+cathode.nshells+elyte_obj.n_species+offset: 'Phi_cat'+str(j+1),
                        1+cathode.nshells+elyte_obj.n_species+offset: 'Phi_cat_dl'+str(j+1)}
         newcols.update(newcols_phi)
+        
+        # Add tags for temperature at each node
+        newcols_T = {2+cathode.nshells+elyte_obj.n_species+offset: 'T_cat'+str(j+1)}
+        newcols.update(newcols_T)
         
         SV_df.rename(columns=newcols, inplace=True)
     

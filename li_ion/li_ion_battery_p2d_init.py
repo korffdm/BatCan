@@ -13,11 +13,6 @@ import li_ion_battery_p2d_inputs
 importlib.reload(li_ion_battery_p2d_inputs)
 from li_ion_battery_p2d_inputs import Inputs
 
-#import sys
-#sys.path.append('C:\\Users\\dkorff\\Research\\BatCan-repo')
-
-#from functions.diffusion_coeffs import elyte_diffusion
-
 # Import Cantera objects:
 anode_obj = ct.Solution(Inputs.ctifile,Inputs.anode_phase)
 elyte_obj = ct.Solution(Inputs.ctifile,Inputs.elyte_phase)
@@ -28,7 +23,6 @@ anode_surf_obj = ct.Interface(Inputs.ctifile,Inputs.anode_surf_phase,
     [anode_obj,elyte_obj,conductor_obj])
 cathode_surf_obj = ct.Interface(Inputs.ctifile,Inputs.cathode_surf_phase,
     [cathode_obj,elyte_obj,conductor_obj])
-
 
 # Anode initial conditions:
 LiC6_0 = Inputs.Li_an_min + Inputs.SOC_0*(Inputs.Li_an_max - Inputs.Li_an_min)
@@ -60,7 +54,6 @@ cathode_surf_obj.TP = Inputs.T, ct.one_atm
 X_ca_0 = cathode_obj.X
 X_elyte_0 = elyte_obj.X
 
-
 """========================================================================="""
 """========================================================================="""
 """========================================================================="""
@@ -80,9 +73,6 @@ class battery:
 #    for i, name in enumerate(elyte_obj.species_names):
 #        ptr_el[str(name)] = i
         
-    
-    
-
 class anode():
 
     # Set flag so solver knows whether to implement the anode:
@@ -97,8 +87,8 @@ class anode():
     # Initial conditions: UPDATE TO GENERALIZE FOR MULT. SPEC - DK 8/31/18
 
     # Anode variables for a given volume include X_Li for each shell, Phi_an,
-    #       Phi_elyte, and rho_k_elyte for all elyte species.
-    nVars = nshells + 2 + elyte_obj.n_species
+    #       Phi_elyte, temperature, and rho_k_elyte for all elyte species.
+    nVars = nshells + 3 + elyte_obj.n_species
 
     # Pointers
     ptr = {}
@@ -107,18 +97,22 @@ class anode():
     ptr['X_k_elyte'] = nshells + np.arange(0,elyte_obj.n_species)
     ptr['Phi_ed'] = nshells + elyte_obj.n_species
     ptr['Phi_dl'] = nshells + elyte_obj.n_species + 1
+    ptr['T'] = nshells + elyte_obj.n_species + 2
     
     ptr_vec = {}
     ptr_vec['X_ed'] = ptr['X_ed']
     ptr_vec['X_k_elyte'] = ptr['X_k_elyte']
     ptr_vec['Phi_ed'] = ptr['Phi_ed']
     ptr_vec['Phi_dl'] = ptr['Phi_dl']
+    ptr_vec['T'] = ptr['T']
+    
     for i in np.arange(1, npoints):
         ptr_vec['X_ed'] = np.append(ptr_vec['X_ed'], ptr['X_ed'] + i*nVars)
         ptr_vec['X_k_elyte'] = np.append(ptr_vec['X_k_elyte'], 
                                            ptr['X_k_elyte'] + i*nVars)
         ptr_vec['Phi_ed'] = np.append(ptr_vec['Phi_ed'], ptr['Phi_ed'] + i*nVars)
         ptr_vec['Phi_dl'] = np.append(ptr_vec['Phi_dl'], ptr['Phi_dl'] + i*nVars)
+        ptr_vec['T'] = np.append(ptr_vec['T'], ptr['T'] + i*nVars)
 
     # Anode/elyte interface area per unit volume
     #   [m^2 interface / m_3 total electrode volume]
@@ -147,8 +141,12 @@ class anode():
     r_pore = Inputs.r_p_an
     d_part = Inputs.d_part_an
     dyInv = npoints/Inputs.H_an
+    dy = Inputs.H_an/npoints
     dr = d_part*0.5/nshells
-
+    
+    # Diffusive flux scaling factors
+    k = np.arange(0, nshells+1)/nshells
+    
     # Calculate the current density [A/m^2] corresponding to a C_rate of 1:
     oneC = eps_ed*anode_obj.density_mole*Inputs.H_an*ct.faraday/3600
 
@@ -174,19 +172,33 @@ class anode():
 
     # Electronic conductivity of the electrode phase:
     sigma_eff_ed = Inputs.sigma_an*eps_ed/tau_ed**3
+    sigma_eff_el = Inputs.sigma_sep*eps_elyte/tau_ed**3
     # Species mobilities of the electrolyte phase.  Converted from user input
     #   diffusion coefficients:
     u_Li_elyte = (Inputs.D_Li_an_el*eps_elyte/ct.gas_constant
           /Inputs.T/tau_ed**3)
     
     D_el_eff = Inputs.D_Li_an_el*eps_elyte/tau_ed**3
+    
+    k_bar = (eps_ed*anode_obj.density_mass*Inputs.k_an 
+                + eps_elyte*elyte_obj.density_mass*Inputs.k_elyte) \
+                / (eps_ed*anode_obj.density_mass + eps_elyte*elyte_obj.density_mass)
+                
+    h_CC = 15       # Convection coefficient for heat loss to ambient [W/m^2-K]
+    T_inf = 300     # Surrounding air temperature [K]
+    nu_f = anode_surf_obj.product_stoich_coeffs()
+    nu_r = anode_surf_obj.reactant_stoich_coeffs()
+    nu = nu_f - nu_r
+    z_k_rxn = np.concatenate((np.array([0., 0., -1.]), Inputs.z_k_elyte))
+    
+    rho_bar = eps_ed*anode_obj.density_mass + eps_elyte*elyte_obj.density_mass
+    cp = eps_ed*1440 + eps_elyte*1375
 
     def get_tflag():
         return anode.t_flag
     
     def set_tflag(value):
         anode.t_flag = value    
-
 
     """========================================================================="""
     """========================================================================="""
@@ -200,7 +212,7 @@ class separator():
     npoints = Inputs.npoints_elyte
 
     # Number of variables per node:
-    nVars = 1 + elyte_obj.n_species
+    nVars = 2 + elyte_obj.n_species
 
     H = Inputs.H_elyte  # Separator thickness [m]
 
@@ -208,8 +220,19 @@ class separator():
 
     # Geometric parameters:
     eps_elyte = Inputs.eps_elyte_sep
+    eps_sep = 1 - Inputs.eps_elyte_sep
     dyInv = npoints/H
+    dy = H/npoints
     tau_sep = tau_sep
+    
+    sigma_eff = Inputs.sigma_sep*eps_elyte/tau_sep**3
+    
+    k_bar = (eps_sep*Inputs.rho_sep*Inputs.k_sep 
+                + eps_elyte*elyte_obj.density_mass*Inputs.k_elyte) \
+                / (eps_sep*Inputs.rho_sep + eps_elyte*elyte_obj.density_mass)
+                
+    h = 15 # Convection coefficient for heat loss to ambient [W/m^2-K]
+    T_inf = 300     # Surrounding air temperature [K] 
     
     u_Li_elyte = (Inputs.D_Li_elyte*eps_elyte/ct.gas_constant
                   /Inputs.T/tau_sep**3)
@@ -219,21 +242,23 @@ class separator():
     ptr = {}
     ptr['X_k_elyte'] = np.arange(0,elyte_obj.n_species)
     ptr['Phi'] = elyte_obj.n_species
+    ptr['T'] = elyte_obj.n_species + 1
     
     ptr_vec = {}
     ptr_vec['X_k_elyte'] = anode.nSV + ptr['X_k_elyte']
     ptr_vec['Phi'] = anode.nSV + ptr['Phi']
+    ptr_vec['T'] = anode.nSV + ptr['T']
     
     for i in np.arange(1, npoints):
         ptr_vec['X_k_elyte'] = np.append(ptr_vec['X_k_elyte'], anode.nSV + ptr['X_k_elyte'] + i*nVars)
         ptr_vec['Phi'] = np.append(ptr_vec['Phi'], anode.nSV + ptr['Phi'] + i*nVars)
+        ptr_vec['T'] = np.append(ptr_vec['T'], anode.nSV + ptr['T'] + i*nVars)
 
     # Set up the solution vector
     nSV = npoints*nVars
 
     # Array of offsets to point to each node's variable:
     offsets = np.arange(int(anode.nSV),int(anode.nSV)+int(nSV),int(nVars))
-
 
 """========================================================================="""
 """========================================================================="""
@@ -250,7 +275,7 @@ class cathode():
     nshells = Inputs.n_shells_cathode
 
     # Number of state variables per node:
-    nVars = nshells + 2 + elyte_obj.n_species
+    nVars = nshells + 3 + elyte_obj.n_species
 
     # Pointers
     ptr = {}
@@ -259,19 +284,22 @@ class cathode():
     ptr['X_k_elyte'] = nshells + np.arange(0,elyte_obj.n_species)
     ptr['Phi_ed'] = nshells + elyte_obj.n_species
     ptr['Phi_dl'] = nshells + elyte_obj.n_species + 1
+    ptr['T'] = nshells + elyte_obj.n_species + 2
     
     ptr_vec = {}
-    
     ptr_vec['X_ed'] = anode.nSV + separator.nSV + ptr['X_ed']
     ptr_vec['X_k_elyte'] = anode.nSV + separator.nSV + ptr['X_k_elyte']
     ptr_vec['Phi_ed'] = anode.nSV + separator.nSV + ptr['Phi_ed']
     ptr_vec['Phi_dl'] = anode.nSV + separator.nSV + ptr['Phi_dl']
+    ptr_vec['T'] = anode.nSV + separator.nSV + ptr['T']
+    
     for i in np.arange(1, npoints):
         ptr_vec['X_ed'] = np.append(ptr_vec['X_ed'], anode.nSV + separator.nSV + ptr['X_ed'] + i*nVars)
         ptr_vec['X_k_elyte'] = np.append(ptr_vec['X_k_elyte'], 
                                            anode.nSV + separator.nSV + ptr['X_k_elyte'] + i*nVars)
         ptr_vec['Phi_ed'] = np.append(ptr_vec['Phi_ed'], anode.nSV + separator.nSV + ptr['Phi_ed'] + i*nVars)
-        ptr_vec['Phi_dl'] = np.append(ptr_vec['Phi_dl'],anode.nSV + separator.nSV +  ptr['Phi_dl'] + i*nVars)
+        ptr_vec['Phi_dl'] = np.append(ptr_vec['Phi_dl'], anode.nSV + separator.nSV +  ptr['Phi_dl'] + i*nVars)
+        ptr_vec['T'] = np.append(ptr_vec['T'], anode.nSV + separator.nSV + ptr['T'] + i*nVars)
 
     # Cathode/elyte interface area per unit volume
     #   [m^2 interface / m_3 total electrode volume]
@@ -301,7 +329,11 @@ class cathode():
     r_p = Inputs.r_p_ca
     d_part = Inputs.d_part_ca
     dyInv = npoints/Inputs.H_ca
+    dy = Inputs.H_ca/npoints
     dr = d_part*0.5/nshells
+    
+    # Diffusive flux scaling factors
+    k = np.arange(0, nshells+1)/nshells
 
     # Calculate the current density [A/m^2] corresponding to a C_rate of 1:
     oneC = eps_ed*cathode_obj.density_mole*Inputs.H_ca*ct.faraday/3600
@@ -327,10 +359,25 @@ class cathode():
         V_shell[j] = ((j+1)**3 - (j)**3)*nsr3
 
     sigma_eff_ed = Inputs.sigma_ca*eps_ed/tau_ed**3
+    sigma_eff_el = Inputs.sigma_sep*eps_elyte/tau_ed**3
     u_Li_elyte = (Inputs.D_Li_cat_el*eps_elyte/ct.gas_constant
           /Inputs.T/tau_ed**3)
     
     D_el_eff = Inputs.D_Li_cat_el*eps_elyte/tau_ed**3
+    
+    k_bar = (eps_ed*cathode_obj.density_mass*Inputs.k_ca 
+                + eps_elyte*elyte_obj.density_mass*Inputs.k_elyte) \
+                / (eps_ed*cathode_obj.density_mass + eps_elyte*elyte_obj.density_mass)
+                
+    h_CC = 15       # Convection coefficient for heat loss to ambient [W/m^2-K]
+    T_inf = 300     # Surrounding air temperature [K]
+    nu_f = cathode_surf_obj.product_stoich_coeffs()
+    nu_r = cathode_surf_obj.reactant_stoich_coeffs()
+    nu = nu_f - nu_r
+    z_k_rxn = np.concatenate((np.array([0., 0., -1.]), Inputs.z_k_elyte))
+    
+    rho_bar = eps_ed*cathode_obj.density_mass + eps_elyte*elyte_obj.density_mass
+    cp = eps_ed*700 + eps_elyte*1375
 
     def get_tflag():
         return cathode.t_flag
@@ -353,17 +400,11 @@ class current():
     # The minus sign is because we begin with the charging reaction, which
     #   delivers negative charge to the anode:
     if Inputs.flag_cathode == 1:
-#        print(anode.oneC, cathode.oneC)
         i_ext_set = -Inputs.C_rate*min(anode.oneC, cathode.oneC)  
     elif Inputs.flag_cathode == 0:
         i_ext_set = -Inputs.C_rate*anode.oneC  
 
 class solver_inputs():     
-    
-#    if Inputs.elyte_flux_model == 'dst':
-#        elyte_model = elyte_diffusion.dst
-#    elif Inputs.elyte_flux_model == 'cst':
-#        elyte_model = elyte_diffusion.cst
     
     SV_0 = np.zeros([anode.nSV+separator.nSV+cathode.nSV])
     
@@ -384,7 +425,9 @@ class solver_inputs():
         SV_0[offsets[j] + ptr['Phi_dl']] = \
             Inputs.Phi_elyte_init - Inputs.Phi_anode_init
         algvar[offsets[j] + ptr['Phi_dl']] = 1
-    
+        
+        SV_0[offsets[j] + ptr['T']] = Inputs.T
+        algvar[offsets[j] + ptr['T']] = 1
     
     offsets = separator.offsets
     ptr = separator.ptr
@@ -393,6 +436,9 @@ class solver_inputs():
         algvar[offsets[j] + ptr['X_k_elyte']] = 1
     
         SV_0[offsets[j] + ptr['Phi']] = Inputs.Phi_elyte_init
+        
+        SV_0[offsets[j] + ptr['T']] = Inputs.T
+        algvar[offsets[j] + ptr['T']] = 1
     
     offsets = cathode.offsets
     ptr = cathode.ptr
@@ -411,5 +457,7 @@ class solver_inputs():
             Inputs.Phi_elyte_init - (Inputs.Phi_anode_init + Inputs.Delta_Phi_init)
         algvar[offsets[j] + ptr['Phi_dl']] = 1
         
-    
+        SV_0[offsets[j] + ptr['T']] = Inputs.T
+        algvar[offsets[j] + ptr['T']] = 1
+        
 print("Initalize check")

@@ -26,26 +26,27 @@ from assimulo.solvers import IDA
 from assimulo.problem import Implicit_Problem
 from assimulo.exception import TerminateSimulation
 
-import li_ion_battery_p2d_functions
-importlib.reload(li_ion_battery_p2d_functions)
+#import li_ion_battery_p2d_functions
+#importlib.reload(li_ion_battery_p2d_functions)
 from li_ion_battery_p2d_functions import setup_plots
 
-import li_ion_battery_p2d_inputs
-importlib.reload(li_ion_battery_p2d_inputs)
+#import li_ion_battery_p2d_inputs
+#importlib.reload(li_ion_battery_p2d_inputs)
 from li_ion_battery_p2d_inputs import Inputs
 
-import li_ion_battery_p2d_init
-importlib.reload(li_ion_battery_p2d_init)
+#import li_ion_battery_p2d_init
+#importlib.reload(li_ion_battery_p2d_init)
 from li_ion_battery_p2d_init import anode as an
 from li_ion_battery_p2d_init import cathode as cat
 from li_ion_battery_p2d_init import separator as sep
 from li_ion_battery_p2d_init import solver_inputs, current
 
-import li_ion_battery_p2d_post_process
-importlib.reload(li_ion_battery_p2d_post_process)
+#import li_ion_battery_p2d_post_process
+#importlib.reload(li_ion_battery_p2d_post_process)
 from li_ion_battery_p2d_post_process import Label_Columns, tag_strings
 from li_ion_battery_p2d_post_process import plot_potential, plot_electrode, plot_elyte
 from li_ion_battery_p2d_post_process import plot_cap
+from li_ion_battery_p2d_post_process import plot_temp
 
 import sys
 sys.path.append('C:\\Users\\dkorff\\Research\\BatCan-repo\\functions')
@@ -58,12 +59,18 @@ def main():
     SV_0 = solver_inputs.SV_0
     SV_dot_0 = np.zeros_like(SV_0)
     algvar = solver_inputs.algvar
+    
+    transport.ptr_el = bat.ptr_el
+    transport.z_k = Inputs.z_k_elyte
+    transport.Dk_el_0 = an.D_el_eff
+    transport.params = bat.cst_params
+    transport.T_0 = Inputs.T
 
     # Close any open pyplot objects:
     plt.close('all')
     
-    atol = np.ones_like(SV_0)*1e-8
-    rtol = 1e-4   
+    atol = 1e-6 # np.ones_like(SV_0)*1e-6
+    rtol = 1e-6  
 
     # Start a timer:
     t_count = time.time()
@@ -78,7 +85,7 @@ def main():
     """----------Figures----------"""
     
     if Inputs.plot_profiles_flag:
-        fig1, axes1, fig2, axes2, fig3, axes3 = setup_plots(plt, rate_tag)
+        fig1, axes1, fig2, axes2, fig3, axes3, fig4, axes4 = setup_plots(plt, rate_tag)
         
     for cycle in np.arange(0, Inputs.n_cycles):
         """----------Equilibration----------"""
@@ -100,7 +107,7 @@ def main():
         sim_eq.verbosity = 50
         sim_eq.make_consistent('IDA_YA_YDP_INIT')
     
-        t_eq, SV_eq, SV_dot_eq = sim_eq.simulate(0.1*t_f)
+        t_eq, SV_eq, SV_dot_eq = sim_eq.simulate(t_f)
     
         # Put solution into pandas dataframe with labeled columns
         SV_eq_df = Label_Columns(t_eq, SV_eq, an.npoints, sep.npoints, 
@@ -150,6 +157,10 @@ def main():
         if Inputs.plot_elyte_profiles == 1:
             plot_elyte(tags['X_el_an'], tags['X_el_cat'], tags['X_el_sep'], SV_ch_df,
                        'Charging', 0, fig3, axes3)
+            
+        if Inputs.plot_temp_flag == 1:
+            plot_temp(tags['T_an'], tags['T_sep'], tags['T_cat'], SV_ch_df, 
+                      'Charging', 0, fig4, axes4)
     
         print('Done charging\n')
     
@@ -196,6 +207,10 @@ def main():
             if Inputs.plot_elyte_profiles == 1:
                 plot_elyte(tags['X_el_an'], tags['X_el_cat'], tags['X_el_sep'], SV_req_df,
                            'Re-equilibrating', 1, fig3, axes3)
+                
+            if Inputs.plot_temp_flag == 1:
+                plot_temp(tags['T_an'], tags['T_sep'], tags['T_cat'], SV_req_df, 
+                      'Re-equilibrating', 1, fig4, axes4)
         
             print('Done re-equilibrating\n')
         else:
@@ -240,6 +255,10 @@ def main():
         if Inputs.plot_elyte_profiles == 1:
             plot_elyte(tags['X_el_an'], tags['X_el_cat'], tags['X_el_sep'], SV_dch_df,
                        'Discharging', 1+Inputs.flag_re_equil, fig3, axes3)
+            
+        if Inputs.plot_temp_flag == 1:
+            plot_temp(tags['T_an'], tags['T_sep'], tags['T_cat'], SV_dch_df, 
+                      'Discharging', 1+Inputs.flag_re_equil, fig4, axes4)
     
         print('Done discharging\n')
     
@@ -265,8 +284,9 @@ def main():
 "============================================================================="
 "============================================================================="
 
-import li_ion_battery_p2d_init
-importlib.reload(li_ion_battery_p2d_init)
+# %%
+#import li_ion_battery_p2d_init
+#importlib.reload(li_ion_battery_p2d_init)
 from li_ion_battery_p2d_init import battery as bat
 from li_ion_battery_p2d_init import anode_obj as anode
 from li_ion_battery_p2d_init import anode_surf_obj as anode_s
@@ -275,25 +295,24 @@ from li_ion_battery_p2d_init import cathode_obj as cathode
 from li_ion_battery_p2d_init import cathode_surf_obj as cathode_s
 from li_ion_battery_p2d_init import conductor_obj as conductor
 
-import li_ion_battery_p2d_functions
-importlib.reload(li_ion_battery_p2d_functions)
+#import li_ion_battery_p2d_functions
+#importlib.reload(li_ion_battery_p2d_functions)
 from li_ion_battery_p2d_functions import set_state
-from li_ion_battery_p2d_functions import set_state_sep
-from li_ion_battery_p2d_functions import dilute_flux as elyte_flux
-from li_ion_battery_p2d_functions import solid_flux
+#from li_ion_battery_p2d_functions import set_state_sep
+#from li_ion_battery_p2d_functions import dilute_flux as elyte_flux
+#from li_ion_battery_p2d_functions import solid_flux
+from li_ion_battery_p2d_functions import thermal_terms
 
 class li_ion(Implicit_Problem):
     def res_fun(t, SV, SV_dot):
         """================================================================="""
         """==========================INITIALIZE============================="""
-        offsets = an.offsets; F = ct.faraday; #params = bat.cst_params
+        offsets = an.offsets; F = ct.faraday; R = ct.gas_constant; #T = Inputs.T
         
         nSV = len(SV)
         res = np.zeros([nSV])
         i_ext = current.get_i_ext()
         
-#        elyte_model = solver_inputs.elyte_model
-
 # %%
         """================================================================="""
         """============================ANODE================================"""
@@ -302,17 +321,15 @@ class li_ion(Implicit_Problem):
 
         N_io_p = 0; i_io_p = 0; i_el_p = i_ext
         
+        q_m = {}; q_p = {}
+        q_p['cond'] = 0
+        q_p['ohm'] = an.eps_ed*abs(i_el_p)**2/an.sigma_eff_ed
+        q_p['conv'] = -i_ext*SV[offset + ptr['Phi_ed']]
+        
         s1 = {}; s2 = {}
                 
         # Shift forward to node 1, j=0, to set FIRST node conditions
-        s2 = set_state(offset, SV, anode, anode_s, elyte, conductor, ptr)
-        
-        # Diffusive flux scaling factors
-        k = np.arange(0, an.nshells+1)/an.nshells
-        transport.ptr_el = bat.ptr_el
-        transport.z_k = Inputs.z_k_elyte
-        transport.Dk_el_0 = an.D_el_eff
-        transport.params = bat.cst_params
+        s2 = set_state(offset, SV, anode, anode_s, elyte, conductor, ptr, an.z_k_rxn)
                         
 # %%
         """============================ANODE================================"""
@@ -322,28 +339,44 @@ class li_ion(Implicit_Problem):
             N_io_m = N_io_p
             i_io_m = i_io_p
             i_el_m = i_el_p
-            s1 = s2
+            q_m = dict(q_p)
+            s1 = dict(s2)
 
             # Shift forward to NEXT node
             offset = int(offsets[j])
 
-            s2 = set_state(offset, SV, anode, anode_s, elyte, conductor, ptr)
+            s2 = set_state(offset, SV, anode, anode_s, elyte, conductor, ptr, an.z_k_rxn)
 
             # Shift back to THIS node, set THIS node outlet conditions
             offset = int(offsets[j - 1])
 
             i_el_p = an.sigma_eff_ed*(s1['phi_ed'] - s2['phi_ed'])*an.dyInv
             
+            C_0 = (s2['rho_el'] + s1['rho_el'])*0.5
+            T = (s2['T'] + s1['T'])*0.5
+            
             transport.C_k = (s2['X_k_el']*s2['rho_el'] 
-                           + s1['X_k_el']*s1['rho_el'])/2.
-            transport.rho_bar = (s2['rho_el'] + s1['rho_el'])/2.
+                           + s1['X_k_el']*s1['rho_el'])*0.5
+            transport.rho_bar = C_0 #(s2['rho_el'] + s1['rho_el'])*0.5
+            transport.T = T
             D_k, D_k_migr = transport.coeffs()
             
-            N_io_p, i_io_p = elyte_flux(s1, s2, an.dyInv, an, D_k, D_k_migr)
+            N_io_p = (- D_k*C_0*(s2['X_k_el'] - s1['X_k_el'])*an.dyInv 
+              - D_k_migr*(Inputs.z_k_elyte*F/R/T)*(s2['phi_el'] - s1['phi_el'])*an.dyInv)
+            
+            i_io_p = np.dot(N_io_p, Inputs.z_k_elyte)*F
+            
+            i_Far_1 = -s1['sdot'][ptr['iFar']]*F*an.A_surf*an.dy
+            
+            # Interface thermal terms
+            q_p['cond'] = -an.k_bar*(s2['T'] - s1['T'])*an.dyInv
+            q_p['ohm_el'] = an.eps_ed*abs(i_el_p)**2/an.sigma_eff_ed 
+            q_p['ohm_io'] = -an.eps_elyte*i_io_p*(s2['phi_el'] - s1['phi_el'])*an.dyInv 
+            q_p['ohm'] = q_p['ohm_el'] + q_p['ohm_io']
+            q_p['conv'] = np.dot(N_io_p, s2['h_el'])
+            
+            qdot = thermal_terms(s1, q_m, q_p, an.dyInv, an.A_surf, an.h_CC, an.T_inf)
 
-            i_Far_1 = -s1['sdot'][ptr['iFar']]*F*an.A_surf/an.dyInv
-
-#            DiffFlux = solid_flux(SV, offset, ptr, s1, an)
             X_Li = SV[offset + ptr['X_ed']]
             DiffFlux = np.zeros([an.nshells+1])
             DiffFlux[1:-1] = an.D_Li_ed*(X_Li[1:] - X_Li[0:-1])/an.dr
@@ -351,7 +384,7 @@ class li_ion(Implicit_Problem):
 
             """Calculate the change in X_LiC6 in the particle interior."""
             res[offset + an.ptr['X_ed']] = (SV_dot[offset + ptr['X_ed']]
-            - ((DiffFlux[1:]*k[1:]**2 - DiffFlux[0:-1]*k[0:-1]**2)
+            - ((DiffFlux[1:]*an.k[1:]**2 - DiffFlux[0:-1]*an.k[0:-1]**2)
             * an.A_surf/an.eps_ed/an.V_shell))
 
             """Change in electrolyte_composition"""
@@ -366,6 +399,11 @@ class li_ion(Implicit_Problem):
             """Algebraic equation for ANODE electric potential boundary condition"""
             res[offset + ptr['Phi_ed']] = (i_el_m - i_el_p + i_io_m - i_io_p)
             
+            """Thermal equation"""
+            res[offset + ptr['T']] = SV_dot[offset + ptr['T']] - \
+            (qdot['cond'] + qdot['ohm'] + qdot['conv'] + qdot['chem'] - qdot['loss'])/an.rho_bar/an.cp
+                        
+            
 # %%
         """============================ANODE================================"""
         """Separator boundary"""
@@ -373,12 +411,24 @@ class li_ion(Implicit_Problem):
         N_io_m = N_io_p
         i_io_m = i_io_p
         i_el_m = i_el_p
-        s1 = s2
+        q_m = dict(q_p)
+        s1 = dict(s2)
      
         # Shift forward to NEXT node, first separator node (j=0)
         j = 0; offset = int(sep.offsets[j])
 
-        s2 = set_state_sep(offset, SV, elyte, sep.ptr)
+#        s2 = set_state_sep(offset, SV, elyte, sep.ptr)
+        elyte.X = SV[offset + sep.ptr['X_k_elyte']]
+        elyte.electric_potential = SV[offset + sep.ptr['Phi']]
+        
+        s2 = {}
+        s2['phi_el'] = SV[offset + sep.ptr['Phi']]
+        s2['rho_el'] = elyte.density_mole
+        s2['X_k_el'] = SV[offset + sep.ptr['X_k_elyte']]
+        s2['T'] = SV[offset + sep.ptr['T']]
+        s2['sdot_full'] = np.zeros_like(s1['sdot_full'])
+        s2['h_el'] = elyte.partial_molar_enthalpies
+        s2['e_k'] = np.zeros_like(s1['e_k'])
 
         # Shift back to THIS node, set THIS node outlet conditions
         i_el_p = 0
@@ -388,16 +438,31 @@ class li_ion(Implicit_Problem):
 
         i_Far_1 = -s1['sdot'][ptr['iFar']]*F*an.A_surf/an.dyInv
         
-        dyInv_boundary = 1/(0.5*(1/an.dyInv + 1/sep.dyInv))
+        dyInv_boundary = 1/(0.5*(an.dy + sep.dy))
+        
+        C_0 = (s2['rho_el'] + s1['rho_el'])*0.5
+        T = (s2['T'] + s1['T'])*0.5
         
         transport.C_k = (s2['X_k_el']*s2['rho_el'] 
-                           + s1['X_k_el']*s1['rho_el'])/2.
-        transport.rho_bar = (s2['rho_el'] + s1['rho_el'])/2.
+                           + s1['X_k_el']*s1['rho_el'])*0.5
+        transport.rho_bar = C_0 #(s2['rho_el'] + s1['rho_el'])*0.5
+        transport.T = T
         D_k, D_k_migr = transport.coeffs()
             
-        N_io_p, i_io_p = elyte_flux(s1, s2, dyInv_boundary, an, D_k, D_k_migr)
+        N_io_p = (- D_k*C_0*(s2['X_k_el'] - s1['X_k_el'])*dyInv_boundary
+          - D_k_migr*(Inputs.z_k_elyte*F/R/T)*(s2['phi_el'] - s1['phi_el'])*dyInv_boundary)
         
-#        DiffFlux = solid_flux(SV, offset, ptr, s1, an)
+        i_io_p = np.dot(N_io_p, Inputs.z_k_elyte)*F
+        
+        # Interface thermal terms
+        q_p['cond'] = -an.k_bar*(s2['T'] - s1['T'])*an.dyInv
+        q_p['ohm_el'] = an.eps_ed*abs(i_el_p)**2/an.sigma_eff_ed 
+        q_p['ohm_io'] = -an.eps_elyte*i_io_p*(s2['phi_el'] - s1['phi_el'])*dyInv_boundary 
+        q_p['ohm'] = q_p['ohm_el'] + q_p['ohm_io']
+        q_p['conv'] = np.dot(N_io_p, s2['h_el'])
+        
+        qdot = thermal_terms(s1, q_m, q_p, an.dyInv, an.A_surf, an.h_CC, an.T_inf)
+        
         X_Li = SV[offset + ptr['X_ed']]
         DiffFlux = np.zeros([an.nshells+1])
         DiffFlux[1:-1] = an.D_Li_ed*(X_Li[1:] - X_Li[0:-1])/an.dr
@@ -405,7 +470,7 @@ class li_ion(Implicit_Problem):
     
         """Calculate the change in X_LiC6 in the particle interior."""
         res[offset + ptr['X_ed']] = (SV_dot[offset + ptr['X_ed']]
-        - ((DiffFlux[1:]*k[1:]**2 - DiffFlux[0:-1]*k[0:-1]**2)
+        - ((DiffFlux[1:]*an.k[1:]**2 - DiffFlux[0:-1]*an.k[0:-1]**2)
         * an.A_surf/an.eps_ed/an.V_shell))
 
         """Change in electrolyte_composition"""
@@ -420,6 +485,10 @@ class li_ion(Implicit_Problem):
         """Algebraic equation for ANODE electric potential boundary condition"""
         res[offset + ptr['Phi_ed']] = SV[an.ptr['Phi_ed']]
         
+        """Thermal equation"""
+        res[offset + ptr['T']] = SV_dot[offset + ptr['T']] - \
+        (qdot['cond'] + qdot['ohm'] + qdot['conv'] + qdot['chem'] - qdot['loss'])/an.rho_bar/an.cp
+        
 # %%
         """================================================================="""
         """==========================SEPARATOR=============================="""
@@ -429,22 +498,49 @@ class li_ion(Implicit_Problem):
             # Save previous node outlet conditions as new inlet conditions
             i_io_m = i_io_p
             N_io_m = N_io_p
-            s1 = s2
+            q_m = dict(q_p)
+            s1 = dict(s2)
             
             # Set NEXT separator node conditions
             offset = int(offsets[j])
             
-            s2 = set_state_sep(offset, SV, elyte, ptr)
+#            s2 = set_state_sep(offset, SV, elyte, ptr)
+            elyte.X = SV[offset + ptr['X_k_elyte']]
+            elyte.electric_potential = SV[offset + ptr['Phi']]
+            
+            s2 = {}
+            s2['phi_el'] = SV[offset + ptr['Phi']]
+            s2['rho_el'] = elyte.density_mole
+            s2['X_k_el'] = SV[offset + ptr['X_k_elyte']]
+            s2['T'] = SV[offset + ptr['T']]
+            s2['sdot_full'] = np.zeros_like(s1['sdot_full'])
+            s2['h_el'] = elyte.partial_molar_enthalpies
+            s2['e_k'] = np.zeros_like(s1['e_k'])
             
             # Shift back to THIS node
             offset = int(sep.offsets[j-1])
             
+            C_0 = (s2['rho_el'] + s1['rho_el'])*0.5
+            T = (s2['T'] + s1['T'])*0.5
+            
             transport.C_k = (s2['X_k_el']*s2['rho_el'] 
-                           + s1['X_k_el']*s1['rho_el'])/2.
-            transport.rho_bar = (s2['rho_el'] + s1['rho_el'])/2.
+                           + s1['X_k_el']*s1['rho_el'])*0.5
+            transport.rho_bar = C_0 #(s2['rho_el'] + s1['rho_el'])*0.5
+            transport.T = T
             D_k, D_k_migr = transport.coeffs()
             
-            N_io_p, i_io_p = elyte_flux(s1, s2, sep.dyInv, sep, D_k, D_k_migr)
+            N_io_p = (- D_k*C_0*(s2['X_k_el'] - s1['X_k_el'])*sep.dyInv 
+              - D_k_migr*(Inputs.z_k_elyte*F/R/T)*(s2['phi_el'] - s1['phi_el'])*sep.dyInv)
+            
+            i_io_p = np.dot(N_io_p, Inputs.z_k_elyte)*F
+            
+            # Interface thermal terms
+            q_p['cond'] = -an.k_bar*(s2['T'] - s1['T'])*an.dyInv
+            q_p['ohm_io'] = -sep.eps_elyte*i_io_p*(s2['phi_el'] - s1['phi_el'])*sep.dyInv 
+            q_p['ohm'] = q_p['ohm_io']
+            q_p['conv'] = np.dot(N_io_p, s2['h_el'])
+            
+            qdot = thermal_terms(s1, q_m, q_p, sep.dyInv, an.A_surf, sep.h, sep.T_inf)
         
             """Change in electrolyte composition"""
             res[offset + ptr['X_k_elyte']] = (SV_dot[offset + ptr['X_k_elyte']]
@@ -453,31 +549,51 @@ class li_ion(Implicit_Problem):
             """Algebraic equation for electrolyte potential"""
             res[offset + ptr['Phi']] = i_io_m - i_io_p
             
+            """Thermal equation"""
+            res[offset + ptr['T']] = SV_dot[offset + ptr['T']] - \
+                                    (qdot['cond'] + qdot['ohm'] + qdot['conv'])
+            
         """==========================SEPARATOR=============================="""
         """Cathode boundary"""
         
         i_io_m = i_io_p
         N_io_m = N_io_p
-        s1 = s2
+        q_m = dict(q_p)
+        s1 = dict(s2)
         
         # Shift forward to NEXT node, first cathode node (j=0)
         j = 0; offset = int(cat.offsets[j])
 
-        s2 = set_state(offset, SV, cathode, cathode_s, elyte, conductor, cat.ptr)
+        s2 = set_state(offset, SV, cathode, cathode_s, elyte, conductor, cat.ptr, cat.z_k_rxn)
         
         # Shift to final separator node
         j = sep.npoints-1; offset = int(offsets[j])
         
         i_el_p = 0
         
-        dyInv_boundary = 1/(0.5*(1/cat.dyInv + 1/sep.dyInv))
+        dyInv_boundary = 1/(0.5*(cat.dy + sep.dy))
+        
+        C_0 = (s2['rho_el'] + s1['rho_el'])*0.5
+        T = (s2['T'] + s1['T'])*0.5
         
         transport.C_k = (s2['X_k_el']*s2['rho_el'] 
-                           + s1['X_k_el']*s1['rho_el'])/2.
-        transport.rho_bar = (s2['rho_el'] + s1['rho_el'])/2.
+                           + s1['X_k_el']*s1['rho_el'])*0.5
+        transport.rho_bar = C_0 #(s2['rho_el'] + s1['rho_el'])*0.5
+        transport.T = T
         D_k, D_k_migr = transport.coeffs()
-
-        N_io_p, i_io_p = elyte_flux(s1, s2, dyInv_boundary, sep, D_k, D_k_migr)
+            
+        N_io_p = (- D_k*C_0*(s2['X_k_el'] - s1['X_k_el'])*dyInv_boundary 
+          - D_k_migr*(Inputs.z_k_elyte*F/R/T)*(s2['phi_el'] - s1['phi_el'])*dyInv_boundary)
+        
+        i_io_p = np.dot(N_io_p, Inputs.z_k_elyte)*F
+        
+        # Interface thermal terms
+        q_p['cond'] = -sep.k_bar*(s2['T'] - s1['T'])*sep.dyInv
+        q_p['ohm_io'] = -sep.eps_elyte*i_io_p*(s2['phi_el'] - s1['phi_el'])*dyInv_boundary
+        q_p['ohm'] = q_p['ohm_io']
+        q_p['conv'] = np.dot(N_io_p, s2['h_el'])
+        
+        qdot = thermal_terms(s1, q_m, q_p, sep.dyInv, an.A_surf, sep.h, sep.T_inf)
                 
         """Change in electrolyte composition"""
         res[offset + ptr['X_k_elyte']] = (SV_dot[offset + ptr['X_k_elyte']]
@@ -485,44 +601,60 @@ class li_ion(Implicit_Problem):
       
         """Algebraic equation for electrolyte potential"""
         res[offset + ptr['Phi']] = i_io_m - i_io_p
+        
+        """Thermal equation"""
+        res[offset + ptr['T']] = SV_dot[offset + ptr['T']] - \
+                                (qdot['cond'] + qdot['ohm'] + qdot['conv'])
 
 # %%
         """================================================================="""
         """===========================CATHODE==============================="""
-        offsets = cat.offsets; ptr = cat.ptr
-        
-        k = np.arange(0, cat.nshells+1)/cat.nshells
-                
-        """=========================CATHODE============================="""
         """INTERIOR NODES"""
+        offsets = cat.offsets; ptr = cat.ptr
         
         for j in np.arange(1, cat.npoints):
             # Save previous node outlet conditions as new inlet conditions
             N_io_m = N_io_p
             i_io_m = i_io_p
             i_el_m = i_el_p
-            s1 = s2
+            q_m = dict(q_p)
+            s1 = dict(s2)
             
             # Shift forward to NEXT node
             offset = int(offsets[j])
             
-            s2 = set_state(offset, SV, cathode, cathode_s, elyte, conductor, ptr)
+            s2 = set_state(offset, SV, cathode, cathode_s, elyte, conductor, ptr, cat.z_k_rxn)
             
             # Shift back to THIS node, set THIS node outlet conditions
             offset = int(offsets[j-1])
             
             i_el_p = cat.sigma_eff_ed*(s1['phi_ed'] - s2['phi_ed'])*cat.dyInv
             
+            C_0 = (s2['rho_el'] + s1['rho_el'])*0.5
+            T = (s2['T'] + s1['T'])*0.5
+            
             transport.C_k = (s2['X_k_el']*s2['rho_el'] 
-                           + s1['X_k_el']*s1['rho_el'])/2.
-            transport.rho_bar = (s2['rho_el'] + s1['rho_el'])/2.
+                           + s1['X_k_el']*s1['rho_el'])*0.5
+            transport.rho_bar = C_0 #(s2['rho_el'] + s1['rho_el'])*0.5
+            transport.T = T
             D_k, D_k_migr = transport.coeffs()
             
-            N_io_p, i_io_p = elyte_flux(s1, s2, cat.dyInv, cat, D_k, D_k_migr)
+            N_io_p = (- D_k*C_0*(s2['X_k_el'] - s1['X_k_el'])*cat.dyInv 
+              - D_k_migr*(Inputs.z_k_elyte*F/R/T)*(s2['phi_el'] - s1['phi_el'])*cat.dyInv)
+            
+            i_io_p = np.dot(N_io_p, Inputs.z_k_elyte)*F
             
             i_Far_1 = -s1['sdot'][ptr['iFar']]*F*cat.A_surf/cat.dyInv
             
-#            DiffFlux = solid_flux(SV, offset, ptr, s1, cat)
+            # Interface thermal terms
+            q_p['cond'] = -cat.k_bar*(s2['T'] - s1['T'])*cat.dyInv
+            q_p['ohm_el'] = cat.eps_ed*abs(i_el_p)**2/cat.sigma_eff_ed 
+            q_p['ohm_io'] = -cat.eps_elyte*i_io_p*(s2['phi_el'] - s1['phi_el'])*cat.dyInv 
+            q_p['ohm'] = q_p['ohm_el'] + q_p['ohm_io']
+            q_p['conv'] = np.dot(N_io_p, s2['h_el'])
+            
+            qdot = thermal_terms(s1, q_m, q_p, cat.dyInv, cat.A_surf, cat.h_CC, cat.T_inf)
+            
             X_Li = SV[offset + ptr['X_ed']]
             DiffFlux = np.zeros([cat.nshells+1])
             DiffFlux[1:-1] = cat.D_Li_ed*(X_Li[1:] - X_Li[0:-1])/cat.dr
@@ -530,7 +662,7 @@ class li_ion(Implicit_Problem):
 
             """Calculate the change in X_LiCoO2 in the particle interior"""
             res[offset + ptr['X_ed']] = (SV_dot[offset + ptr['X_ed']]
-            - ((DiffFlux[1:]*k[1:]**2 - DiffFlux[0:-1]*k[0:-1]**2)
+            - ((DiffFlux[1:]*cat.k[1:]**2 - DiffFlux[0:-1]*cat.k[0:-1]**2)
             *cat.A_surf/cat.eps_ed/cat.V_shell))
             
             """Change in electrolyte composition"""
@@ -544,6 +676,10 @@ class li_ion(Implicit_Problem):
             
             """Algebraic equation for CATHODE electric potential"""
             res[offset + ptr['Phi_ed']] = (i_el_m - i_el_p + i_io_m - i_io_p)
+            
+            """Thermal equation"""
+            res[offset + ptr['T']] = SV_dot[offset + ptr['T']] - \
+            (qdot['cond'] + qdot['ohm'] + qdot['conv'] + qdot['chem'] - qdot['loss'])/cat.rho_bar/cat.cp
         
 # %%
         """=========================CATHODE============================="""
@@ -551,7 +687,8 @@ class li_ion(Implicit_Problem):
         N_io_m = N_io_p
         i_io_m = i_io_p
         i_el_m = i_el_p
-        s1 = s2
+        q_m = dict(q_p)
+        s1 = dict(s2)
         
         # FINAL node
         j = cat.npoints-1; offset = int(offsets[j])
@@ -562,7 +699,15 @@ class li_ion(Implicit_Problem):
         
         i_Far_1 = -s1['sdot'][ptr['iFar']]*F*cat.A_surf/cat.dyInv
         
-#        DiffFlux = solid_flux(SV, offset, ptr, s1, cat)
+        # Interface thermal terms
+        q_p['cond'] = -cat.k_bar*(s2['T'] - s1['T'])*cat.dyInv
+        q_p['ohm_el'] = cat.eps_ed*abs(i_el_p)**2/cat.sigma_eff_ed 
+        q_p['ohm_io'] = 0 
+        q_p['ohm'] = q_p['ohm_el'] + q_p['ohm_io']
+        q_p['conv'] = -i_ext*SV[offset + ptr['Phi_ed']]
+        
+        qdot = thermal_terms(s1, q_m, q_p, cat.dyInv, cat.A_surf, cat.h_CC, cat.T_inf)
+        qdot['chem'] = 0
         X_Li = SV[offset + ptr['X_ed']]
         DiffFlux = np.zeros([cat.nshells+1])
         DiffFlux[1:-1] = cat.D_Li_ed*(X_Li[1:] - X_Li[0:-1])/cat.dr
@@ -570,7 +715,7 @@ class li_ion(Implicit_Problem):
                         
         """Calculate the change in X_LiCoO2 in the particle interior"""
         res[offset + ptr['X_ed']] = (SV_dot[offset + ptr['X_ed']]
-        - ((DiffFlux[1:]*k[1:]**2 - DiffFlux[0:-1]*k[0:-1]**2)
+        - ((DiffFlux[1:]*cat.k[1:]**2 - DiffFlux[0:-1]*cat.k[0:-1]**2)
         *cat.A_surf/cat.eps_ed/cat.V_shell))
         
         """Change in electrolyte composition"""
@@ -584,7 +729,17 @@ class li_ion(Implicit_Problem):
         
         """Algebraic equation for CATHODE electric potential"""
         res[offset + ptr['Phi_ed']] = (i_el_m - i_el_p + i_io_m - i_io_p)
-                        
+        
+        """Thermal equation"""
+        res[offset + ptr['T']] = SV_dot[offset + ptr['T']] - \
+        (qdot['cond'] + qdot['ohm'] + qdot['conv'] + qdot['chem'] - qdot['loss'])/cat.rho_bar/cat.cp
+              
+#        print(res)
+#        print(SV[an.ptr_vec['T']])
+#        print(SV[sep.ptr_vec['T']])
+#        print(SV[cat.ptr_vec['T']], '\n')
+#        print(t)
+        
         return res
 
 # %%
@@ -611,8 +766,8 @@ class li_ion(Implicit_Problem):
         event7 = np.zeros([cat.npoints*cat.nshells])
         event8 = np.zeros([cat.npoints*cat.nshells])
         
-        event5 = y[cat.ptr_vec['Phi_dl']]
-        event6 = 5 - y[cat.ptr_vec['Phi_ed']]
+        event5 = y[cat.ptr_vec['Phi_ed']] - 2.8
+        event6 = 4.2 - y[cat.ptr_vec['Phi_ed']]
         event7 = cat.X_Li_max - y[cat.ptr_vec['X_ed']]
         event8 = y[cat.ptr_vec['X_ed']] - cat.X_Li_min
                
@@ -668,10 +823,10 @@ class li_ion(Implicit_Problem):
             print('Cutoff: Anode shell fully de-lithiated')
             raise TerminateSimulation
         elif any(state_info[event_ptr['An_Xed2']:event_ptr['Cat_phi1']]):
-            print('Cutoff: Cathode double layer flipped sign')
+            print('Cutoff: Cell potential hit min of 2.8 V')
             raise TerminateSimulation
         elif any(state_info[event_ptr['Cat_phi1']:event_ptr['Cat_phi2']]):
-            print('Cutoff: Cell potential went over 5 V')
+            print('Cutoff: Cell potential hit max of 4.2 V')
             raise TerminateSimulation
         elif any(state_info[event_ptr['Cat_phi2']:event_ptr['Cat_Xed1']]):
             print('Cutoff: Cathode shell fully lithiated')

@@ -30,9 +30,16 @@ class Inputs():
     plot_potential_profiles = 1*plot_profiles_flag  # Plots potential profiles
     plot_electrode_profiles = 1*plot_profiles_flag  # Plots solid phase mole fraction profiles
     plot_elyte_profiles = 1*plot_profiles_flag      # Plots concentration of Li+ in elyte phase
-    plot_cap_flag = 1       # Plots dis/charge capacity curves
+    plot_cap_flag = 0       # Plots dis/charge capacity curves
+    plot_temp_flag = 1      # Plot temperature profile through cell
     
     # Options for plots
+    
+    #Options for thermal terms
+    flag_conduction = 1
+    flag_ohmic = 0
+    flag_convection = 0
+    flag_chemical = 1
     
     # phi_time sets the options for the potential plot. 0 will plot a charge/
     #   discharge profile on a single axes. 1 will plot potential over time
@@ -42,7 +49,7 @@ class Inputs():
 
     # The C-rate is the rate of charge/discharge - how many charges/discharges
     #   can be carried out in 1 hour? This sets the current density:
-    C_rate = 20
+    C_rate = 2
     
     # Set number of charge/discharge cycles to run
     n_cycles = 1
@@ -56,7 +63,7 @@ class Inputs():
     elyte_flux_model = 'cst'
     
     # Simulation temperature (or initial temperature)
-    T = 300  # [K]
+    T = 298.15  # [K]
 
     # Set initial SOC to generalize both electrode initial lithiation
     # Fully charged = anode fully lithiated, cathode fully de-lithiated.
@@ -107,6 +114,8 @@ class Inputs():
     # Other Parameters
     C_dl_an = 1.5e-2    # Double-layer capacitance [F/m^2]
     sigma_an = 75.0     # Bulk anode electrical conductivity [S/m]
+    
+    k_an = 1.04         # Thermal conductivity of graphite [W/m-K]
 
     D_Li_an = 7.5e-16   # Bulk diffusion coefficient for Li in graphite [m^2/s]
     D_Li_an_el = np.array([1e-12, 1e-12, 1e-10, 3e-11])
@@ -120,7 +129,10 @@ class Inputs():
 
     eps_elyte_sep = 0.5 # Separator electrolyte volume fraction
     tau_sep = 1.6       # Tortuosity of separator
-    sigma_sep = 50.0    # Bulk ionic conductivity of separator [S/m]
+    sigma_sep = 0.8     # Bulk ionic conductivity of separator [S/m]
+    k_elyte = 0.59      # Thermal conductivity of electrolyte [W/m-K]
+    rho_sep = 492       # Density of separator material [kg/m^3]
+    k_sep = 0.334       # Thermal conductivity of separator [W/m-K]
 
     "Cathode geometry and transport"
     # Microstructure:
@@ -136,6 +148,7 @@ class Inputs():
     # Other parameters:
     C_dl_ca = 1.5e-2    # Double-layer capacitance [F/m^2]
     sigma_ca = 7.50     # Bulk cathode electrical conductivity [S/m]
+    k_ca = 1.48         # Thermal conductivity of LCO [W/m-K]
     D_Li_ca = 7.5e-16   # Bulk diffusion coefficient for Li in LiCoO2 [m^2/s]
     D_Li_cat_el = np.array([1e-12, 1e-12, 1e-10, 3e-11])
     

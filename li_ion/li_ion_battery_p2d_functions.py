@@ -12,7 +12,7 @@ import cantera as ct
 import numpy as np
 from li_ion_battery_p2d_inputs import Inputs
 
-def set_state(offset, SV, ed, surf, el, conductor, ptr):
+def set_state(offset, SV, ed, surf, el, conductor, ptr, z_k_rxn):
                     
     ed.X = [SV[offset + ptr['X_ed'][-1]], 1 - SV[offset + ptr['X_ed'][-1]]]
     ed.electric_potential = SV[offset + ptr['Phi_ed']]
@@ -24,11 +24,21 @@ def set_state(offset, SV, ed, surf, el, conductor, ptr):
     
     state = {}
     state['sdot'] = surf.get_net_production_rates(el)
+    state['sdot_full'] = surf.net_production_rates
     state['phi_ed'] = SV[offset + ptr['Phi_ed']]
     state['phi_el'] = SV[offset + ptr['Phi_dl']] + SV[offset + ptr['Phi_ed']]
     state['rho_ed'] = ed.density_mole
     state['rho_el'] = el.density_mole
     state['X_k_el'] = SV[offset + ptr['X_k_elyte']]
+    state['T'] = SV[offset + ptr['T']]
+    
+    state['h_ed'] = ed.partial_molar_enthalpies
+    state['h_el'] = el.partial_molar_enthalpies
+    state['h_cond'] = np.zeros([1])
+    state['h_tot'] = np.concatenate((state['h_ed'], state['h_cond'], state['h_el']))
+    state['phi_k'] = np.concatenate((np.ones([3])*state['phi_ed'], 
+                                     np.ones([el.n_species])*state['phi_el']))
+    state['e_k'] = state['h_tot'] + z_k_rxn*ct.faraday*state['phi_k']
     
     return state
 
@@ -43,6 +53,7 @@ def set_state_sep(offset, SV, el, ptr):
     state['phi_el'] = SV[offset + ptr['Phi']]
     state['rho_el'] = el.density_mole
     state['X_k_el'] = SV[offset + ptr['X_k_elyte']]
+    state['T'] = SV[offset + ptr['T']]
     
     return state
 
@@ -103,5 +114,26 @@ def setup_plots(plt, rate_tag):
         fig3.text(0.15, 0.8, rate_tag, fontsize=20, 
                   bbox=dict(facecolor='white', alpha=0.5))
         
-    return fig1, axes1, fig2, axes2, fig3, axes3
+    if Inputs.plot_temp_flag == 1:
+        nrows = 1 #Inputs.flag_anode + Inputs.flag_cathode + Inputs.flag_sep
+        ncols = 2 + Inputs.flag_re_equil
+        fig4, axes4 = plt.subplots(sharey="row", figsize=(18,9), nrows=nrows,
+                                   ncols=ncols)
+        plt.subplots_adjust(wspace=0.15, hspace=0.4)
+        fig4.text(0.15, 0.8, rate_tag, fontsize=20,
+                  bbox=dict(facecolor='white', alpha=0.5))
+        
+    return fig1, axes1, fig2, axes2, fig3, axes3, fig4, axes4
 
+"""====================================================================="""
+
+def thermal_terms(state, q_m, q_p, dyInv, A_s, h_CC, T_inf):
+    
+    qdot = {}
+    qdot['cond'] = Inputs.flag_conduction*(q_m['cond'] - q_p['cond'])*dyInv
+    qdot['conv'] = Inputs.flag_convection*(q_m['conv'] - q_p['conv'])*dyInv
+    qdot['ohm'] = Inputs.flag_ohmic*(q_m['ohm'] + q_p['ohm'])*0.5
+    qdot['chem'] = Inputs.flag_chemical*(-A_s)*np.dot(state['sdot_full'][0:-1], state['e_k'])
+    qdot['loss'] = 0 #h_CC*(state['T'] - T_inf)
+    
+    return qdot

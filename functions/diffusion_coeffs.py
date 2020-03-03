@@ -37,9 +37,11 @@ class cst:
     params = []
     T_0 = []
     T = []
+    dG = []
 
     def coeffs():
         z_k = cst.z_k; C_k = cst.C_k; ptr_el = cst.ptr_el; params = cst.params
+#        dG = cst.dG
         T_0 = cst.T_0; T = cst.T
         C_Li = C_k[cst.ptr_el['Li']]            # Concentration of lithium
         C_sol = C_k[cst.ptr_el['solvents']]     # Concentration of the solvent
@@ -56,6 +58,7 @@ class cst:
     
         # Modify diffusion coefficient term to include an Arrhenius-like
         #   temperature dependence
+#        Dk_el[cst.ptr_el['Li']] = Dk_el[cst.ptr_el['Li']]*np.exp((1/ct.gas_constant)*(1/T - 1/T_0))
         Dk_el[cst.ptr_el['Li']] = Dk_el[cst.ptr_el['Li']]*np.exp((T-T_0)/ct.gas_constant/T_0)
         
         # Assume diffusion coefficient for cation same as anion
@@ -74,6 +77,7 @@ class cst:
                + params['sigma_elyte_b']*C_Li**1.5
                + params['sigma_elyte_c']*C_Li**3)
         
+#        sigma = sigma*10*np.exp((1/ct.gas_constant)*(1/T - 1/T_0))
         sigma = sigma*10*np.exp((T-T_0)/ct.gas_constant/T_0)
         
         # Polynomial fit for thermodynamic factor: (1 + d(ln f)/d(ln C_Li))
