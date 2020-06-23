@@ -2,7 +2,7 @@
 """
 Created on Wed Sep 26 13:59:27 2018
 
-@author: dkorff
+@author: korffdm
 """
 
 import importlib
